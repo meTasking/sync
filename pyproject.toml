@@ -1,0 +1,19 @@
+[build-system]
+requires = [
+   "setuptools>=61.0",
+   "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metaskingsync"
+version = "1.0.0"
+authors = [
+    { name="Jiří Kuchyňka", email="anty150@gmail.com" },
+]
+description = "meTasking SYNC - Sync your work time logging across different platforms from CLI"
+requires-python = ">=3.11"
+classifiers = [
+   "Programming Language :: Python :: 3",
+   "Operating System :: OS Independent",
+]
