@@ -31,7 +31,7 @@ def select_provider(provider: DataProvider, args: CliArgs):
             args.delete,
             args.jira_server,
             args.jira_username,
-            args.jira_token,
+            args.obtain_jira_token(),
         )
     elif provider == DataProvider.toggl:
         assert args.toggl_token is not None, \

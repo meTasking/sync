@@ -40,6 +40,28 @@ class CliArgs(BaseModel):
         default=os.environ.get("ATLASSIAN_JIRA_TOKEN"),
         description="Atlassian jira token",
     )
+    jira_token_command: Optional[str] = Field(
+        default=os.environ.get("ATLASSIAN_JIRA_TOKEN_COMMAND"),
+        description="Command which can be used to obtain Atlassian jira token",
+    )
+
+    def obtain_jira_token(self) -> str:
+        if self.jira_token is not None:
+            return self.jira_token
+
+        if self.jira_token_command is not None:
+            # Execute the command and get the output
+            import subprocess
+            self.jira_token = subprocess.check_output(
+                self.jira_token_command,
+                shell=True,
+                text=True,
+            ).strip()
+            return self.jira_token
+
+        raise ValueError(
+            "Jira token is required"
+        )
 
     toggl_token: Optional[str] = Field(
         default=os.environ.get("TOGGL_TOKEN"),
