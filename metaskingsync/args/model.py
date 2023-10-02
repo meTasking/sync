@@ -141,6 +141,9 @@ class CliArgs(BaseModel):
 
     @validator("since", "until", pre=True, always=True)
     def parse_datetime(cls, value):
+        if value is None:
+            return None
+
         if isinstance(value, datetime):
             return value  # If it's already a datetime object, return it as is
 

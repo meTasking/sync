@@ -77,11 +77,11 @@ def sync(accuracy: Accuracy, source: Provider, destination: Provider):
         data_point = id_map[(_SOURCE, id)]
         rounded_start = round_datetime(accuracy, data_point.start)
         rounded_end = round_datetime(accuracy, data_point.end)
-        for data_type, id in time_start_map.get(rounded_start, set()):
+        for data_type, sid in time_start_map.get(rounded_start, set()):
             if data_type != _DESTINATION:
                 continue
 
-            destination_data_point = id_map[(data_type, id)]
+            destination_data_point = id_map[(data_type, sid)]
             destination_rounded_end = \
                 round_datetime(accuracy, destination_data_point.end)
             if rounded_end != destination_rounded_end:

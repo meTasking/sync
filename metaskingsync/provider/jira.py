@@ -87,7 +87,9 @@ class JiraProvider(BaseProvider):
                         if record["author"]["accountId"] != user_id:
                             continue
 
-                        start = datetime.fromisoformat(record["started"])
+                        start = datetime.fromisoformat(
+                            record["started"]
+                        ).astimezone()
                         end_delta = timedelta(
                             seconds=int(record["timeSpentSeconds"])
                         )

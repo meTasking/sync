@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Iterable
+from typing import Iterable, Any
 import requests
 
 from .base import BaseProvider, DataPoint, DataPointAction
@@ -15,6 +15,8 @@ class MetaTaskingProvider(BaseProvider):
 
     server: str
 
+    failed: list[DataPoint]
+
     def __init__(
         self,
         since: datetime | None,
@@ -24,6 +26,8 @@ class MetaTaskingProvider(BaseProvider):
         server: str
     ):
         self.server = server
+
+        self.failed = []
 
         super().__init__(since, until, dry_run, allow_delete)
 
@@ -45,16 +49,27 @@ class MetaTaskingProvider(BaseProvider):
 
             for log in logs:
                 for record in log["records"]:
+                    has_task = log["task"] is not None
+                    name = (
+                        log["task"]["name"]
+                        if has_task else
+                        log["name"]
+                    )
+                    description = (
+                        log["name"] + ": " + log["description"]
+                        if has_task else
+                        log["description"]
+                    )
                     yield DataPoint(
                         id=str(record['id']),
-                        name=(
-                            log["task"]["name"]
-                            if log["task"] is not None else
-                            log["name"]
-                        ),
-                        description=log["description"],
-                        start=datetime.fromisoformat(record["start"]),
-                        end=datetime.fromisoformat(record["end"]),
+                        name=name,
+                        description=description,
+                        start=datetime.fromisoformat(
+                            record["start"]
+                        ).astimezone(),
+                        end=datetime.fromisoformat(
+                            record["end"]
+                        ).astimezone(),
                     )
 
             offset += len(logs)
@@ -64,55 +79,68 @@ class MetaTaskingProvider(BaseProvider):
         #       but that is not going to happen...
 
         for change in changes:
-            if change.action == DataPointAction.DELETE:
-                if not self.allow_delete:
-                    continue
-                # Delete existing record
-                response = requests.delete(
-                    f"{self.server}{URL_RECORD}/{change.id}",
-                )
-                response.raise_for_status()
-                continue
+            try:
+                self._apply_change(change)
+            except Exception:
+                self.failed.append(change)
+                import traceback
+                traceback.print_exc()
 
-            if change.action == DataPointAction.CREATE:
-                # Create new log
-                response = requests.post(
-                    f"{self.server}{URL_LOG}",
-                    json={
-                        "name": change.name,
-                        "description": change.description,
-                        "records": [
-                            {
-                                "start": change.start.isoformat(),
-                                "end": change.end.isoformat(),
-                            },
-                        ],
-                    },
-                )
-                response.raise_for_status()
-                continue
+    def _apply_change(self, change: DataPoint):
+        if change.action == DataPointAction.DELETE:
+            if not self.allow_delete:
+                return
+            # Delete existing record
+            response = requests.delete(
+                f"{self.server}{URL_RECORD}/{change.id}",
+            )
+            response.raise_for_status()
+            return
 
-            if change.action == DataPointAction.UPDATE:
-                # Update existing log and record
-                response = requests.put(
-                    f"{self.server}{URL_RECORD}/{change.id}",
-                    json={
-                        "start": change.start.isoformat(),
-                        "end": change.end.isoformat(),
-                    },
-                )
-                response.raise_for_status()
-                response = requests.get(
-                    f"{self.server}{URL_RECORD}/{change.id}/log",
-                )
-                response.raise_for_status()
-                log = response.json()
-                response = requests.put(
-                    f"{self.server}{URL_LOG}/{log['id']}",
-                    json={
-                        "name": change.name,
-                        "description": change.description,
-                    },
-                )
-                response.raise_for_status()
-                continue
+        if change.action == DataPointAction.CREATE:
+            # Create new log
+            response = requests.post(
+                f"{self.server}{URL_LOG}",
+                json={
+                    "name": change.name,
+                    "description": change.description,
+                    "records": [
+                        {
+                            "start": change.start.isoformat(),
+                            "end": change.end.isoformat(),
+                        },
+                    ],
+                },
+            )
+            response.raise_for_status()
+            return
+
+        if change.action == DataPointAction.UPDATE:
+            # Update existing log and record
+            response = requests.put(
+                f"{self.server}{URL_RECORD}/{change.id}",
+                json={
+                    "start": change.start.isoformat(),
+                    "end": change.end.isoformat(),
+                },
+            )
+            response.raise_for_status()
+            response = requests.get(
+                f"{self.server}{URL_RECORD}/{change.id}/log",
+            )
+            response.raise_for_status()
+            log = response.json()
+            response = requests.put(
+                f"{self.server}{URL_LOG}/{log['id']}",
+                json={
+                    "name": change.name,
+                    "description": change.description,
+                },
+            )
+            response.raise_for_status()
+            return
+
+    def report(self) -> dict[str, Any]:
+        base = super().report()
+        base["Failed"] = self.failed
+        return base

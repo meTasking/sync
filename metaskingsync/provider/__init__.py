@@ -22,8 +22,6 @@ def select_provider(provider: DataProvider, args: CliArgs):
             "Jira server is required for Jira provider"
         assert args.jira_username is not None, \
             "Jira username is required for Jira provider"
-        assert args.jira_token is not None, \
-            "Jira token is required for Jira provider"
         return JiraProvider(
             args.since,
             args.until,
