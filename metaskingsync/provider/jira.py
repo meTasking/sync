@@ -170,16 +170,27 @@ class JiraProvider(BaseProvider):
                 )
                 return
 
+            start_time = change.start
+            if start_time.tzinfo is None:
+                start_time = start_time.astimezone()
+
+            spent_seconds = int((
+                change.end - change.start
+            ).total_seconds())
+            spent_overflow = spent_seconds % 60
+            end_time_seconds = change.end.second
+            if end_time_seconds - spent_overflow <= 0:
+                # Fix for stupid Jira supporting only minutes
+                spent_seconds += 60
+
             # Create new worklog
             response = requests.post(
                 URL_ISSUE_WORKLOG % (self.server, change.name),
                 auth=(self.username, self.token),
                 json={
                     "comment": change.description,
-                    "started": change.start.strftime("%Y-%m-%dT%H:%M:%S.%f%z"),
-                    "timeSpentSeconds": int((
-                        change.end - change.start
-                    ).total_seconds()),
+                    "started": start_time.strftime("%Y-%m-%dT%H:%M:%S.000%z"),
+                    "timeSpentSeconds": spent_seconds,
                 },
             )
             if response.status_code == 404 or response.status_code == 400:
@@ -204,16 +215,27 @@ class JiraProvider(BaseProvider):
 
             # FIXME: Changing name (parent issue) does not work
 
+            start_time = change.start
+            if start_time.tzinfo is None:
+                start_time = start_time.astimezone()
+
+            spent_seconds = int((
+                change.end - change.start
+            ).total_seconds())
+            spent_overflow = spent_seconds % 60
+            end_time_seconds = change.end.second
+            if end_time_seconds - spent_overflow <= 0:
+                # Fix for stupid Jira supporting only minutes
+                spent_seconds += 60
+
             # Update existing worklog
             response = requests.put(
                 change.id,
                 auth=(self.username, self.token),
                 json={
                     "comment": change.description,
-                    "started": change.start.strftime("%Y-%m-%dT%H:%M:%S.%f%z"),
-                    "timeSpentSeconds": (
-                        change.end - change.start
-                    ).total_seconds(),
+                    "started": start_time.strftime("%Y-%m-%dT%H:%M:%S.000%z"),
+                    "timeSpentSeconds": spent_seconds,
                 },
             )
             response.raise_for_status()
