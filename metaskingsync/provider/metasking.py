@@ -49,6 +49,9 @@ class MetaTaskingProvider(BaseProvider):
 
             for log in logs:
                 for record in log["records"]:
+                    if record["end"] is None:
+                        continue
+
                     has_task = log["task"] is not None
                     name = (
                         log["task"]["name"]
