@@ -174,12 +174,12 @@ class JiraProvider(BaseProvider):
             if start_time.tzinfo is None:
                 start_time = start_time.astimezone()
 
-            spent_seconds = int((
+            spent_seconds = (
                 change.end - change.start
-            ).total_seconds())
+            ).total_seconds()
             spent_overflow = spent_seconds % 60
             end_time_seconds = change.end.second
-            if end_time_seconds - spent_overflow <= 0:
+            if end_time_seconds - spent_overflow < 0:
                 # Fix for stupid Jira supporting only minutes
                 spent_seconds += 60
 
@@ -190,7 +190,7 @@ class JiraProvider(BaseProvider):
                 json={
                     "comment": change.description,
                     "started": start_time.strftime("%Y-%m-%dT%H:%M:%S.000%z"),
-                    "timeSpentSeconds": spent_seconds,
+                    "timeSpentSeconds": int(spent_seconds),
                 },
             )
             if response.status_code == 404 or response.status_code == 400:
@@ -219,12 +219,12 @@ class JiraProvider(BaseProvider):
             if start_time.tzinfo is None:
                 start_time = start_time.astimezone()
 
-            spent_seconds = int((
+            spent_seconds = (
                 change.end - change.start
-            ).total_seconds())
+            ).total_seconds()
             spent_overflow = spent_seconds % 60
             end_time_seconds = change.end.second
-            if end_time_seconds - spent_overflow <= 0:
+            if end_time_seconds - spent_overflow < 0:
                 # Fix for stupid Jira supporting only minutes
                 spent_seconds += 60
 
@@ -235,7 +235,7 @@ class JiraProvider(BaseProvider):
                 json={
                     "comment": change.description,
                     "started": start_time.strftime("%Y-%m-%dT%H:%M:%S.000%z"),
-                    "timeSpentSeconds": spent_seconds,
+                    "timeSpentSeconds": int(spent_seconds),
                 },
             )
             response.raise_for_status()
