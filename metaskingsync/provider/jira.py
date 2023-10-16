@@ -178,7 +178,10 @@ class JiraProvider(BaseProvider):
                 change.end - change.start
             ).total_seconds()
             spent_overflow = spent_seconds % 60
-            end_time_seconds = change.end.second
+            end_time_seconds = (
+                change.end.second +
+                (change.end.microsecond / 1000000.0)
+            )
             if end_time_seconds - spent_overflow < 0:
                 # Fix for stupid Jira supporting only minutes
                 spent_seconds += 60
