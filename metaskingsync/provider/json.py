@@ -38,36 +38,16 @@ class JsonProvider(BaseProvider):
             data_point = DataPoint.parse_obj(data)
             yield data_point
 
-    def apply_changes(self, changes: Iterable[DataPoint]):
+    def apply_changes(self, changes: Iterable[DataPointAction]):
         if self.output is None:
             return
 
         if self.output_only_modifications:
             for change in changes:
-                if change.action == DataPointAction.DELETE:
-                    if not self.allow_delete:
-                        continue
-                    jsonstream.dump({
-                        "id": change.id,
-                        "action": DataPointAction.DELETE,
-                    }, self.output)
-                elif change.action == DataPointAction.CREATE:
-                    self.output.write(change.json(exclude={"id"}))
-                    self.output.write("\n")
-                elif change.action == DataPointAction.UPDATE:
-                    self.output.write(change.json())
-                    self.output.write("\n")
-                elif change.action == DataPointAction.NONE:
-                    pass
-                else:
-                    raise ValueError(
-                        f"Unknown action: {change.action}"
-                    )
+                self.output.write(change.json())
+                self.output.write("\n")
         else:
             for id in self.data_sequence:
                 data_point = self.data_map[id]
-                exclude = {"action"}
-                if data_point.action == DataPointAction.CREATE:
-                    exclude.add("id")
-                self.output.write(data_point.json(exclude=exclude))
+                self.output.write(data_point.json())
                 self.output.write("\n")

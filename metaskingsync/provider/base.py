@@ -1,16 +1,8 @@
 from typing import Iterable, Any
 from datetime import datetime
 from abc import ABC, abstractmethod
-import enum
 
-from pydantic import BaseModel, Field, validator
-
-
-class DataPointAction(enum.StrEnum):
-    CREATE = "create"
-    DELETE = "delete"
-    UPDATE = "update"
-    NONE = "none"
+from pydantic import BaseModel, Field, validator, root_validator
 
 
 class DataPoint(BaseModel):
@@ -19,10 +11,6 @@ class DataPoint(BaseModel):
             "unique identifier of the data point (can be anything); " +
             "used to allow overwriting of existing data points"
         ),
-    )
-    action: DataPointAction = Field(
-        default=DataPointAction.NONE,
-        description="action to be taken on the data point",
     )
     name: str = Field(
         description="identifier of the data point - used for grouping",
@@ -43,6 +31,37 @@ class DataPoint(BaseModel):
         if v < values["start"]:
             raise ValueError("end must be after start")
         return v
+
+
+class DataPointAction(BaseModel):
+    prev: DataPoint | None = Field(
+        default=None,
+        description="previous version of the data point",
+    )
+    next: DataPoint | None = Field(
+        default=None,
+        description="next version of the data point",
+    )
+
+    @property
+    def is_create(self) -> bool:
+        return self.prev is None and self.next is not None
+
+    @property
+    def is_update(self) -> bool:
+        return self.prev is not None and self.next is not None
+
+    @property
+    def is_delete(self) -> bool:
+        return self.prev is not None and self.next is None
+
+    @root_validator
+    def validate_action(cls, values):
+        prev = values.get("prev")
+        next = values.get("next")
+        if prev is None and next is None:
+            raise ValueError("prev and next cannot both be None")
+        return values
 
 
 class Provider(ABC):
@@ -81,7 +100,7 @@ class Provider(ABC):
         pass
 
     @abstractmethod
-    def add_changes(self, data: Iterable[DataPoint]):
+    def add_changes(self, data: Iterable[DataPointAction]):
         pass
 
     @abstractmethod
@@ -102,8 +121,8 @@ class BaseProvider(Provider):
     data_sequence: list[str]
     data_indexes: dict[str, int]
     data_map: dict[str, DataPoint]
-    remaining_changes: list[DataPoint]
-    all_changes: list[DataPoint]
+    remaining_changes: list[DataPointAction]
+    all_changes: list[DataPointAction]
 
     def __init__(
         self,
@@ -147,34 +166,35 @@ class BaseProvider(Provider):
         for id in self.data_sequence:
             yield self.data_map[id]
 
-    def add_changes(self, data: Iterable[DataPoint]):
+    def add_changes(self, data: Iterable[DataPointAction]):
         self.remaining_changes += data
         self.all_changes += data
         for data_point in data:
-            if data_point.action == DataPointAction.CREATE:
-                if data_point.id in self.data_map:
+            if data_point.is_create:
+                assert data_point.next is not None
+                if data_point.next.id in self.data_map:
                     raise ValueError(
-                        f"Duplicate data point id: {data_point.id}"
+                        f"Duplicate data point id: {data_point.next.id}"
                     )
                 else:
-                    self.data_sequence.append(data_point.id)
-                    self.data_indexes[data_point.id] = \
+                    self.data_sequence.append(data_point.next.id)
+                    self.data_indexes[data_point.next.id] = \
                         len(self.data_sequence) - 1
-                    self.data_map[data_point.id] = data_point
-            elif data_point.action == DataPointAction.DELETE:
-                if data_point.id in self.data_map:
-                    data_point_index = self.data_indexes[data_point.id]
+                    self.data_map[data_point.next.id] = data_point.next
+            elif data_point.is_delete:
+                assert data_point.prev is not None
+                if data_point.prev.id in self.data_map:
+                    data_point_index = self.data_indexes[data_point.prev.id]
                     self.data_sequence.pop(data_point_index)
                     for id in self.data_sequence[data_point_index:]:
                         self.data_indexes[id] -= 1
-                    del self.data_indexes[data_point.id]
-                    del self.data_map[data_point.id]
-            elif data_point.action == DataPointAction.UPDATE:
-                self.data_map[data_point.id] = data_point
-            elif data_point.action == DataPointAction.NONE:
-                pass
+                    del self.data_indexes[data_point.prev.id]
+                    del self.data_map[data_point.prev.id]
+            elif data_point.is_update:
+                assert data_point.next is not None
+                self.data_map[data_point.next.id] = data_point.next
             else:
-                raise ValueError(f"Unknown action: {data_point.action}")
+                raise ValueError(f"Unknown action: {data_point}")
         return super().add_changes(data)
 
     def apply(self):
@@ -183,25 +203,25 @@ class BaseProvider(Provider):
         self.remaining_changes = []
 
     @abstractmethod
-    def apply_changes(self, changes: Iterable[DataPoint]):
+    def apply_changes(self, changes: Iterable[DataPointAction]):
         pass
 
     def report(self) -> dict[str, Any]:
         return {
-            "Deleted": list(filter(
-                lambda x: x.action == DataPointAction.DELETE,
-                self.all_changes,
-            )),
             "Added": list(filter(
-                lambda x: x.action == DataPointAction.CREATE,
+                lambda x: x.prev is None and x.next is not None,
                 self.all_changes,
             )),
             "Updated": list(filter(
-                lambda x: x.action == DataPointAction.UPDATE,
+                lambda x: x.prev is not None and x.next is not None,
                 self.all_changes,
             )),
-            "Unchanged but added to changed (should be empty)": list(filter(
-                lambda x: x.action == DataPointAction.NONE,
+            "Deleted": list(filter(
+                lambda x: x.prev is not None and x.next is None,
+                self.all_changes,
+            )),
+            "Invalid": list(filter(
+                lambda x: x.prev is None and x.next is None,
                 self.all_changes,
             )),
         }

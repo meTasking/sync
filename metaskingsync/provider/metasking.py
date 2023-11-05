@@ -15,7 +15,7 @@ class MetaTaskingProvider(BaseProvider):
 
     server: str
 
-    failed: list[DataPoint]
+    failed: list[DataPointAction]
 
     def __init__(
         self,
@@ -77,7 +77,7 @@ class MetaTaskingProvider(BaseProvider):
 
             offset += len(logs)
 
-    def apply_changes(self, changes: Iterable[DataPoint]):
+    def apply_changes(self, changes: Iterable[DataPointAction]):
         # NOTE: It would be ideal to handle this transactionally,
         #       but that is not going to happen...
 
@@ -89,28 +89,32 @@ class MetaTaskingProvider(BaseProvider):
                 import traceback
                 traceback.print_exc()
 
-    def _apply_change(self, change: DataPoint):
-        if change.action == DataPointAction.DELETE:
+    def _apply_change(self, change: DataPointAction):
+        if change.is_delete:
+            assert change.prev is not None
+
             if not self.allow_delete:
                 return
             # Delete existing record
             response = requests.delete(
-                f"{self.server}{URL_RECORD}/{change.id}",
+                f"{self.server}{URL_RECORD}/{change.prev.id}",
             )
             response.raise_for_status()
             return
 
-        if change.action == DataPointAction.CREATE:
+        if change.is_create:
+            assert change.next is not None
+
             # Create new log
             response = requests.post(
                 f"{self.server}{URL_LOG}",
                 json={
-                    "name": change.name,
-                    "description": change.description,
+                    "name": change.next.name,
+                    "description": change.next.description,
                     "records": [
                         {
-                            "start": change.start.isoformat(),
-                            "end": change.end.isoformat(),
+                            "start": change.next.start.isoformat(),
+                            "end": change.next.end.isoformat(),
                         },
                     ],
                 },
@@ -118,26 +122,28 @@ class MetaTaskingProvider(BaseProvider):
             response.raise_for_status()
             return
 
-        if change.action == DataPointAction.UPDATE:
+        if change.is_update:
+            assert change.next is not None
+
             # Update existing log and record
             response = requests.put(
-                f"{self.server}{URL_RECORD}/{change.id}",
+                f"{self.server}{URL_RECORD}/{change.next.id}",
                 json={
-                    "start": change.start.isoformat(),
-                    "end": change.end.isoformat(),
+                    "start": change.next.start.isoformat(),
+                    "end": change.next.end.isoformat(),
                 },
             )
             response.raise_for_status()
             response = requests.get(
-                f"{self.server}{URL_RECORD}/{change.id}/log",
+                f"{self.server}{URL_RECORD}/{change.next.id}/log",
             )
             response.raise_for_status()
             log = response.json()
             response = requests.put(
                 f"{self.server}{URL_LOG}/{log['id']}",
                 json={
-                    "name": change.name,
-                    "description": change.description,
+                    "name": change.next.name,
+                    "description": change.next.description,
                 },
             )
             response.raise_for_status()

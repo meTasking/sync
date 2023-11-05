@@ -21,8 +21,8 @@ class JiraProvider(BaseProvider):
     username: str
     token: str
 
-    unprocessed: list[DataPoint]
-    failed: list[DataPoint]
+    unprocessed: list[DataPointAction]
+    failed: list[DataPointAction]
 
     def __init__(
         self,
@@ -127,7 +127,7 @@ class JiraProvider(BaseProvider):
 
             offset += issues["maxResults"]
 
-    def apply_changes(self, changes: Iterable[DataPoint]):
+    def apply_changes(self, changes: Iterable[DataPointAction]):
         for change in changes:
             try:
                 self._apply_change(change)
@@ -136,51 +136,69 @@ class JiraProvider(BaseProvider):
                 import traceback
                 traceback.print_exc()
 
-    def _apply_change(self, change: DataPoint):
-        if change.action == DataPointAction.DELETE:
+    def _apply_change(self, change: DataPointAction):
+        if change.is_update:
+            assert change.prev is not None
+            assert change.next is not None
+            if change.prev.name != change.next.name:
+                # Edge case: name change
+                # Delete old worklog and create new one by splitting
+                # the change into two separate changes
+                self._apply_change(DataPointAction(
+                    prev=change.prev,
+                ))
+                self._apply_change(DataPointAction(
+                    next=change.next,
+                ))
+                return
+
+        if change.is_delete:
+            assert change.prev is not None
+
             if not self.allow_delete:
                 return
 
-            assert change.id.startswith("http"), change.id
+            assert change.prev.id.startswith("http"), change.prev.id
 
             # DELETE
             # https://domain.atlassian.net/rest/api/2/issue/CODE-XX/worklog/X
 
             # Delete existing worklog
             response = requests.delete(
-                change.id,
+                change.prev.id,
                 auth=(self.username, self.token),
             )
             response.raise_for_status()
             return
 
-        if change.action == DataPointAction.CREATE:
+        if change.is_create:
+            assert change.next is not None
 
             # POST
             # https://domain.atlassian.net/rest/api/2/issue/CODE-XX/worklog
             # {"timeSpent":"60m","comment":"text","started":"2023-09-29T12:10:16.723+0200"}
 
             # Check if name is valid issue key
-            if not ISSUE_KEY_REGEX.match(change.name):
+            if not ISSUE_KEY_REGEX.match(change.next.name):
                 self.unprocessed.append(change)
                 from rich import print
                 print(
-                    f"[red]Invalid issue key: {change.name}[/red]",
+                    f"[red]Invalid issue key: {change.next.name}[/red]",
                     file=sys.stderr
                 )
                 return
 
-            start_time = change.start
+            start_time = change.next.start
             if start_time.tzinfo is None:
                 start_time = start_time.astimezone()
 
             spent_seconds = (
-                change.end - change.start
+                change.next.end - change.next.start
             ).total_seconds()
             spent_overflow = spent_seconds % 60
             end_time_seconds = (
-                change.end.second +
-                (change.end.microsecond / 1000000.0)
+                change.next.end.second +
+                (change.next.end.microsecond / 1000000.0)
             )
             if end_time_seconds - spent_overflow < 0:
                 # Fix for stupid Jira supporting only minutes
@@ -188,10 +206,10 @@ class JiraProvider(BaseProvider):
 
             # Create new worklog
             response = requests.post(
-                URL_ISSUE_WORKLOG % (self.server, change.name),
+                URL_ISSUE_WORKLOG % (self.server, change.next.name),
                 auth=(self.username, self.token),
                 json={
-                    "comment": change.description,
+                    "comment": change.next.description,
                     "started": start_time.strftime("%Y-%m-%dT%H:%M:%S.000%z"),
                     "timeSpentSeconds": int(spent_seconds),
                 },
@@ -200,7 +218,7 @@ class JiraProvider(BaseProvider):
                 self.unprocessed.append(change)
                 from rich import print
                 print(
-                    f"[red]Issue not found: {change.name}[/red]",
+                    f"[red]Issue not found: {change.next.name}[/red]",
                     file=sys.stderr
                 )
                 print(response.json(), file=sys.stderr)
@@ -209,34 +227,44 @@ class JiraProvider(BaseProvider):
             response.raise_for_status()
             return
 
-        if change.action == DataPointAction.UPDATE:
-            assert change.id.startswith("http"), change.id
+        if change.is_update:
+            assert change.prev is not None
+            assert change.next is not None
+
+            assert change.prev.id.startswith("http"), change.prev.id
+            assert change.next.id.startswith("http"), change.next.id
+
+            assert change.prev.id == change.next.id, (
+                change.prev.id,
+                change.next.id,
+            )
+            assert change.prev.name == change.next.name, (
+                "Name change should have been handled earlier"
+            )
 
             # PUT
             # https://domain.atlassian.net/rest/api/2/issue/CODE-XX/worklog/X
             # {"timeSpent":"15m","started":"2023-09-21T11:15:00.000+0200","comment":"text"}
 
-            # FIXME: Changing name (parent issue) does not work
-
-            start_time = change.start
+            start_time = change.next.start
             if start_time.tzinfo is None:
                 start_time = start_time.astimezone()
 
             spent_seconds = (
-                change.end - change.start
+                change.next.end - change.next.start
             ).total_seconds()
             spent_overflow = spent_seconds % 60
-            end_time_seconds = change.end.second
+            end_time_seconds = change.next.end.second
             if end_time_seconds - spent_overflow < 0:
                 # Fix for stupid Jira supporting only minutes
                 spent_seconds += 60
 
             # Update existing worklog
             response = requests.put(
-                change.id,
+                change.next.id,
                 auth=(self.username, self.token),
                 json={
-                    "comment": change.description,
+                    "comment": change.next.description,
                     "started": start_time.strftime("%Y-%m-%dT%H:%M:%S.000%z"),
                     "timeSpentSeconds": int(spent_seconds),
                 },

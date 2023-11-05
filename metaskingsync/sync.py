@@ -93,7 +93,7 @@ def sync(accuracy: Accuracy, source: Provider, destination: Provider):
             missing_in_destination.add(id)
 
     modified_in_destination_ids: set[str] = set()
-    modified_in_destination: list[DataPoint] = list()
+    modified_in_destination: list[tuple[DataPoint, DataPoint]] = list()
     additional_in_destination: set[str] = set()
     for id in ids_list[_DESTINATION]:
         data_point = id_map[(_DESTINATION, id)]
@@ -122,35 +122,36 @@ def sync(accuracy: Accuracy, source: Provider, destination: Provider):
                     )
                 modified_in_destination_ids.add(id)
                 modified_data_point = data_point.copy()
-                modified_data_point.action = DataPointAction.UPDATE
                 modified_data_point.name = source_data_point.name
                 modified_data_point.description = \
                     source_data_point.description
-                modified_in_destination.append(modified_data_point)
+                modified_in_destination.append(
+                    (data_point, modified_data_point)
+                )
 
             break
         else:
             # break not called
             additional_in_destination.add(id)
 
-    modifications: list[DataPoint] = []
+    modifications: list[DataPointAction] = []
 
-    for data_point in modified_in_destination:
-        modifications.append(data_point)
-        id_map[(_DESTINATION, data_point.id)] = data_point
+    for data_point_prev, data_point_next in modified_in_destination:
+        modifications.append(DataPointAction(
+            prev=data_point_prev,
+            next=data_point_next,
+        ))
+        id_map[(_DESTINATION, data_point_next.id)] = data_point_next
 
     for id in missing_in_destination:
         original = id_map[(_SOURCE, id)]
         new_data_point = original.copy()
-        new_data_point.action = DataPointAction.CREATE
         new_data_point.id = next_id()
-        modifications.append(new_data_point)
+        modifications.append(DataPointAction(next=new_data_point))
         index_data_point(_DESTINATION, new_data_point)
 
     for id in additional_in_destination:
         original = id_map[(_DESTINATION, id)]
-        deleted_data_point = original.copy()
-        deleted_data_point.action = DataPointAction.DELETE
-        modifications.append(deleted_data_point)
+        modifications.append(DataPointAction(prev=original))
 
     destination.add_changes(modifications)

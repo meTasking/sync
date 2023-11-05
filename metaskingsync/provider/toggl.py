@@ -73,40 +73,51 @@ class TogglProvider(BaseProvider):
                 end=datetime.fromisoformat(entry["stop"]),
             )
 
-    def apply_changes(self, changes: Iterable[DataPoint]):
+    def apply_changes(self, changes: Iterable[DataPointAction]):
         for change in changes:
-            if change.action == DataPointAction.DELETE:
+            if change.is_delete:
+                assert change.prev is not None
+
                 if not self.allow_delete:
                     continue
+
                 response = requests.delete(
-                    URL_ENTRY_UPDATE % (self.workspace_id, change.id),
+                    URL_ENTRY_UPDATE % (self.workspace_id, change.prev.id),
                     auth=(self.token, "api_token"),
                 )
                 response.raise_for_status()
                 continue
 
-            if change.action == DataPointAction.UPDATE:
-                if not self.split_name or change.description is None:
-                    description = change.name
+            if change.is_update:
+                assert change.next is not None
+
+                if not self.split_name or change.next.description is None:
+                    description = change.next.name
                 else:
-                    description = f"{change.name}: {change.description}"
+                    description = (
+                        f"{change.next.name}: {change.next.description}"
+                    )
                 response = requests.put(
-                    URL_ENTRY_UPDATE % (self.workspace_id, change.id),
+                    URL_ENTRY_UPDATE % (self.workspace_id, change.next.id),
                     auth=(self.token, "api_token"),
                     json={
                         "description": description,
-                        "start": change.start.isoformat(),
-                        "stop": change.end.isoformat(),
+                        "start": change.next.start.isoformat(),
+                        "stop": change.next.end.isoformat(),
                     },
                 )
                 response.raise_for_status()
                 continue
 
-            if change.action == DataPointAction.CREATE:
-                if not self.split_name or change.description is None:
-                    description = change.name
+            if change.is_create:
+                assert change.next is not None
+
+                if not self.split_name or change.next.description is None:
+                    description = change.next.name
                 else:
-                    description = f"{change.name}: {change.description}"
+                    description = (
+                        f"{change.next.name}: {change.next.description}"
+                    )
                 response = requests.post(
                     URL_ENTRY_CREATE % self.workspace_id,
                     auth=(self.token, "api_token"),
@@ -114,8 +125,8 @@ class TogglProvider(BaseProvider):
                         "created_with": "meTasking SYNC",
                         "workspace_id": self.workspace_id,
                         "description": description,
-                        "start": change.start.isoformat(),
-                        "stop": change.end.isoformat(),
+                        "start": change.next.start.isoformat(),
+                        "stop": change.next.end.isoformat(),
                     },
                 )
                 response.raise_for_status()
