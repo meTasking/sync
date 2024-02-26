@@ -16,6 +16,8 @@ def select_provider(provider: DataProvider, args: CliArgs):
             args.dry_run,
             args.delete,
             args.metasking_server,
+            args.metasking_category,
+            args.metasking_task,
         )
     elif provider == DataProvider.jira:
         assert args.jira_server is not None, \
@@ -30,6 +32,7 @@ def select_provider(provider: DataProvider, args: CliArgs):
             args.jira_server,
             args.jira_username,
             args.obtain_jira_token(),
+            args.jira_key_ignore_pattern,
         )
     elif provider == DataProvider.toggl:
         assert args.toggl_token is not None, \

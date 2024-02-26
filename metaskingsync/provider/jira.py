@@ -20,6 +20,7 @@ class JiraProvider(BaseProvider):
     server: str
     username: str
     token: str
+    key_ignore_pattern: re.Pattern | None
 
     unprocessed: list[DataPointAction]
     failed: list[DataPointAction]
@@ -32,11 +33,17 @@ class JiraProvider(BaseProvider):
         allow_delete: bool,
         server: str,
         username: str,
-        token: str
+        token: str,
+        key_ignore_pattern: str | None = None,
     ):
         self.server = server
         self.username = username
         self.token = token
+        self.key_ignore_pattern = (
+            re.compile(key_ignore_pattern)
+            if key_ignore_pattern is not None
+            else None
+        )
 
         self.unprocessed = []
         self.failed = []
@@ -79,6 +86,11 @@ class JiraProvider(BaseProvider):
             issues = response.json()
 
             for issue in issues["issues"]:
+                if self.key_ignore_pattern is not None and \
+                        self.key_ignore_pattern.match(issue["key"]):
+                    # Skip vacation issues
+                    continue
+
                 records = issue["fields"]["worklog"]
                 offset_records = records["startAt"]
                 while True:

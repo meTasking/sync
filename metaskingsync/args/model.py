@@ -24,6 +24,14 @@ class CliArgs(BaseModel):
         default=os.environ.get("METASKING_SERVER", "http://localhost:8000"),
         description="meTasking server address",
     )
+    metasking_category: Optional[str] = Field(
+        default=os.environ.get("METASKING_CATEGORY"),
+        description="meTasking category filter",
+    )
+    metasking_task: Optional[str] = Field(
+        default=os.environ.get("METASKING_TASK"),
+        description="meTasking task filter",
+    )
 
     jira_server: str = Field(
         default=os.environ.get(
@@ -43,6 +51,10 @@ class CliArgs(BaseModel):
     jira_token_command: Optional[str] = Field(
         default=os.environ.get("ATLASSIAN_JIRA_TOKEN_COMMAND"),
         description="Command which can be used to obtain Atlassian jira token",
+    )
+    jira_key_ignore_pattern: Optional[str] = Field(
+        default=None,
+        description="Pattern to match jira keys to ignore",
     )
 
     def obtain_jira_token(self) -> str:

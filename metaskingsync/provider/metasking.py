@@ -14,6 +14,8 @@ URL_RECORD = f"/api/{API_VERSION}/record"
 class MetaTaskingProvider(BaseProvider):
 
     server: str
+    category: str | None
+    task: str | None
 
     failed: list[DataPointAction]
 
@@ -23,9 +25,13 @@ class MetaTaskingProvider(BaseProvider):
         until: datetime | None,
         dry_run: bool,
         allow_delete: bool,
-        server: str
+        server: str,
+        category: str | None = None,
+        task: str | None = None,
     ):
         self.server = server
+        self.category = category
+        self.task = task
 
         self.failed = []
 
@@ -34,12 +40,18 @@ class MetaTaskingProvider(BaseProvider):
     def initialize_data_points(self) -> Iterable[DataPoint]:
         offset = 0
         while True:
+            params: dict[str, Any] = {
+                "offset": offset,
+                "limit": 100,
+            }
+            if self.category is not None:
+                params["category"] = self.category
+            if self.task is not None:
+                params["task"] = self.task
+
             response = requests.get(
                 f"{self.server}{URL_LOG_LIST}",
-                params={
-                    "offset": offset,
-                    "limit": 100,
-                },
+                params=params,
             )
             response.raise_for_status()
             logs = response.json()
