@@ -8,6 +8,7 @@ __pycache__/
 *.egg-info/
 htmlcov/
 /venv/
+/.venv/
 /.idea/
 /build/
 /dist/
